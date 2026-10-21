@@ -81,9 +81,14 @@ export class LeaderboardService {
   async recalculateRankings() {
     const computedAt = new Date();
 
-    // 1. Recalculate Global rankings
+    // 1. Recalculate Global rankings, preserving the previous rank for movement.
     const globalRankings = await this.calculateStudentPoints(LeaderboardScope.GLOBAL);
     await this.prisma.$transaction(async (tx) => {
+      const old = await tx.leaderboardSnapshot.findMany({
+        where: { scope: LeaderboardScope.GLOBAL, courseId: null },
+        select: { userId: true, rank: true },
+      });
+      const oldRanks = new Map(old.map((row) => [row.userId, row.rank]));
       await tx.leaderboardSnapshot.deleteMany({
         where: { scope: LeaderboardScope.GLOBAL, courseId: null },
       });
@@ -93,14 +98,16 @@ export class LeaderboardService {
             scope: LeaderboardScope.GLOBAL,
             courseId: null,
             userId: student.userId,
+            points: student.points,
             rank: index + 1,
+            previousRank: oldRanks.get(student.userId) ?? null,
             computedAt,
           })),
         });
       }
     });
 
-    // 2. Recalculate Course-level rankings
+    // 2. Recalculate Course-level rankings.
     const activeCourses = await this.prisma.course.findMany({
       select: { id: true },
     });
@@ -108,6 +115,11 @@ export class LeaderboardService {
     for (const course of activeCourses) {
       const courseRankings = await this.calculateStudentPoints(LeaderboardScope.COURSE, course.id);
       await this.prisma.$transaction(async (tx) => {
+        const old = await tx.leaderboardSnapshot.findMany({
+          where: { scope: LeaderboardScope.COURSE, courseId: course.id },
+          select: { userId: true, rank: true },
+        });
+        const oldRanks = new Map(old.map((row) => [row.userId, row.rank]));
         await tx.leaderboardSnapshot.deleteMany({
           where: { scope: LeaderboardScope.COURSE, courseId: course.id },
         });
@@ -117,7 +129,9 @@ export class LeaderboardService {
               scope: LeaderboardScope.COURSE,
               courseId: course.id,
               userId: student.userId,
+              points: student.points,
               rank: index + 1,
+              previousRank: oldRanks.get(student.userId) ?? null,
               computedAt,
             })),
           });
@@ -190,6 +204,6 @@ export class LeaderboardService {
       };
     });
 
-    return studentPoints.sort((a, b) => b.points - a.points);
+    return studentPoints.sort((a, b) => b.points - a.points || a.userId.localeCompare(b.userId));
   }
 }
