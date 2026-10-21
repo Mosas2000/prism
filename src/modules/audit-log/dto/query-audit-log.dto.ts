@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, Min, Max, IsInt, IsDateString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, Min, Max, IsInt, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AuditAction, AuditTargetType } from '@prisma/client';
 
